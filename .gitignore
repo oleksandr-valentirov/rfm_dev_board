@@ -1,0 +1,9 @@
+# Ignored Files and Folders
+*.DSNlck
+*.lnk
+
+# Folders
+__Previews/
+History/
+Project Outputs *
+Project Logs for *
