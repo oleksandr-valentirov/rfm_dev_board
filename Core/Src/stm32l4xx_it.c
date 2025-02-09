@@ -58,6 +58,7 @@
 
 /* USER CODE BEGIN EV */
 extern uint8_t led_flag;
+extern uint8_t rfm_flag;
 /* USER CODE END EV */
 
 /******************************************************************************/

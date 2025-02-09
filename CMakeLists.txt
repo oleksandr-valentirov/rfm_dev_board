@@ -48,11 +48,16 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    rfm69_lib/rfm69.c
+    app/app_main.c
+    Core/Src/newlib_stubs.c
 )
 
 # Add include paths
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined include paths
+    rfm69_lib/
+    app/
 )
 
 # Add project symbols (macros)
