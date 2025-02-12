@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 #include "stm32l4xx_hal_gpio_ex.h"
 #include "rfm69.h"
 /* USER CODE END Includes */
@@ -43,7 +44,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-uint8_t led_flag = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -99,13 +100,11 @@ int main(void)
   MX_USART1_UART_Init();
   MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
-  while (!led_flag) {}
-  led_flag = 0;
+  delay_ms_poll(500);  /* by default reset pin is set on POR */
   LL_GPIO_ResetOutputPin(RFM_RESET_GPIO_Port, RFM_RESET_Pin);
-  while (!led_flag) {}
-  led_flag = 0;
+  delay_ms_poll(500);
 
-  if(RFM_Init() == 0)
+  if(RFM_Init(1, 100) == 0)
     LL_GPIO_ResetOutputPin(LED_GPIO_Port, LED_Pin);
   /* USER CODE END 2 */
 
@@ -113,9 +112,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    if (led_flag) {
-      led_flag = 0;
-    }
+    delay_ms_poll(100);
+    RFM_Routine();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -222,7 +220,7 @@ static void MX_SPI2_Init(void)
   SPI_InitStruct.ClockPolarity = LL_SPI_POLARITY_LOW;
   SPI_InitStruct.ClockPhase = LL_SPI_PHASE_1EDGE;
   SPI_InitStruct.NSS = LL_SPI_NSS_SOFT;
-  SPI_InitStruct.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV64;
+  SPI_InitStruct.BaudRate = LL_SPI_BAUDRATEPRESCALER_DIV16;
   SPI_InitStruct.BitOrder = LL_SPI_MSB_FIRST;
   SPI_InitStruct.CRCCalculation = LL_SPI_CRCCALCULATION_DISABLE;
   SPI_InitStruct.CRCPoly = 7;
@@ -344,13 +342,13 @@ static void MX_GPIO_Init(void)
   LL_GPIO_Init(RFM_CS_GPIO_Port, &GPIO_InitStruct);
 
   /**/
-  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE10);
+  GPIO_InitStruct.Pin = RFM_DIO0_Pin|RFM_DIO3_Pin;
+  GPIO_InitStruct.Mode = LL_GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = LL_GPIO_PULL_NO;
+  LL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /**/
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE11);
-
-  /**/
-  LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE12);
 
   /**/
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTA, LL_SYSCFG_EXTI_LINE15);
@@ -359,23 +357,7 @@ static void MX_GPIO_Init(void)
   LL_SYSCFG_SetEXTISource(LL_SYSCFG_EXTI_PORTB, LL_SYSCFG_EXTI_LINE3);
 
   /**/
-  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_10;
-  EXTI_InitStruct.Line_32_63 = LL_EXTI_LINE_NONE;
-  EXTI_InitStruct.LineCommand = ENABLE;
-  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
-  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
-  LL_EXTI_Init(&EXTI_InitStruct);
-
-  /**/
   EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_11;
-  EXTI_InitStruct.Line_32_63 = LL_EXTI_LINE_NONE;
-  EXTI_InitStruct.LineCommand = ENABLE;
-  EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
-  EXTI_InitStruct.Trigger = LL_EXTI_TRIGGER_RISING;
-  LL_EXTI_Init(&EXTI_InitStruct);
-
-  /**/
-  EXTI_InitStruct.Line_0_31 = LL_EXTI_LINE_12;
   EXTI_InitStruct.Line_32_63 = LL_EXTI_LINE_NONE;
   EXTI_InitStruct.LineCommand = ENABLE;
   EXTI_InitStruct.Mode = LL_EXTI_MODE_IT;
@@ -399,13 +381,7 @@ static void MX_GPIO_Init(void)
   LL_EXTI_Init(&EXTI_InitStruct);
 
   /**/
-  LL_GPIO_SetPinPull(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin, LL_GPIO_PULL_NO);
-
-  /**/
   LL_GPIO_SetPinPull(RFM_DIO4_GPIO_Port, RFM_DIO4_Pin, LL_GPIO_PULL_NO);
-
-  /**/
-  LL_GPIO_SetPinPull(RFM_DIO3_GPIO_Port, RFM_DIO3_Pin, LL_GPIO_PULL_NO);
 
   /**/
   LL_GPIO_SetPinPull(RFM_DIO2_GPIO_Port, RFM_DIO2_Pin, LL_GPIO_PULL_NO);
@@ -414,13 +390,7 @@ static void MX_GPIO_Init(void)
   LL_GPIO_SetPinPull(RFM_DIO1_GPIO_Port, RFM_DIO1_Pin, LL_GPIO_PULL_NO);
 
   /**/
-  LL_GPIO_SetPinMode(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin, LL_GPIO_MODE_INPUT);
-
-  /**/
   LL_GPIO_SetPinMode(RFM_DIO4_GPIO_Port, RFM_DIO4_Pin, LL_GPIO_MODE_INPUT);
-
-  /**/
-  LL_GPIO_SetPinMode(RFM_DIO3_GPIO_Port, RFM_DIO3_Pin, LL_GPIO_MODE_INPUT);
 
   /**/
   LL_GPIO_SetPinMode(RFM_DIO2_GPIO_Port, RFM_DIO2_Pin, LL_GPIO_MODE_INPUT);

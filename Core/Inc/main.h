@@ -68,7 +68,10 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+uint8_t get_delay_ms_flag(void);
+void delay_ms_poll(uint32_t ms);
+void delay_ms_it(uint32_t ms);
+uint8_t get_delay_ms_flag(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

@@ -24,7 +24,7 @@
 #define RFM_VERSION            0x24  /* constant value of RFM69_RegVersion */
 
 /* Transmitter Registers */
-#define RFM69_RegPaLevel
+#define RFM69_RegPaLevel        0X11
 #define RFM69_RegPaRamp
 #define RFM69_RegOcp
 
@@ -47,6 +47,7 @@
 #define RFM69_RegDioMapping1    0x25    /* DIO0 - DIO3 */
 #define RFM69_RegDioMapping2    0x26    /* DIO4, DIO5, ClkOut */
 #define RFM69_RegPreambleMsb    0x2C
+#define RFM69_RegPreambleLsb    0x2D
 
 /* Packet Engine Registers */
 #define RFM69_RegSyncConfig     0x2E

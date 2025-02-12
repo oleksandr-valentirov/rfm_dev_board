@@ -51,14 +51,31 @@
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static uint32_t ms_counter = 0;
+static uint32_t delay_ms_val = 0;
+static volatile uint8_t delay_ms_flag = 0;
 
+uint8_t get_delay_ms_flag(void) {
+  return delay_ms_flag;
+}
+
+void delay_ms_poll(uint32_t ms) {
+  uint32_t start = ms_counter;
+  while (ms_counter != (start + ms)){
+    __asm__("nop");
+  }
+}
+
+void delay_ms_it(uint32_t ms) {
+  delay_ms_flag = 0;
+  delay_ms_val = ms_counter + ms;
+}
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
 
 /* USER CODE BEGIN EV */
-extern uint8_t led_flag;
-extern uint8_t rfm_flag;
+
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -184,11 +201,9 @@ void PendSV_Handler(void)
 void SysTick_Handler(void)
 {
   /* USER CODE BEGIN SysTick_IRQn 0 */
-  static uint32_t ms_counter = 0;
-
   ms_counter++;
-  if (ms_counter % 1000 == 0)
-    led_flag = 1;
+  if (ms_counter == delay_ms_val)
+    delay_ms_flag = 1;
   /* USER CODE END SysTick_IRQn 0 */
 
   /* USER CODE BEGIN SysTick_IRQn 1 */
