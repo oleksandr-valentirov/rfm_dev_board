@@ -205,7 +205,7 @@ void SysTick_Handler(void)
   if (ms_counter == delay_ms_val)
     delay_ms_flag = 1;
   /* USER CODE END SysTick_IRQn 0 */
-
+  HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
 
   /* USER CODE END SysTick_IRQn 1 */
