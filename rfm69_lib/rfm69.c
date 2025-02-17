@@ -5,9 +5,7 @@
 #include "rfm69_registers.h"
 
 /* defines */
-#define RFM_SPI         (SPI2)
-#define rfm_cs_low()    LL_GPIO_ResetOutputPin(RFM_CS_GPIO_Port, RFM_CS_Pin)
-#define rfm_cs_high()   LL_GPIO_SetOutputPin(RFM_CS_GPIO_Port, RFM_CS_Pin)
+
 
 /* types */
 typedef enum rfm69_mode {
@@ -27,14 +25,21 @@ typedef enum rfm69_state {
 } rfm69_state_t;
 
 /* static variables */
-extern SPI_HandleTypeDef hspi2;
+
 
 /* basic SPI RFM functions */
-static void rfm_write(uint8_t addr, uint8_t *ptr, uint8_t len);
-static void rfm_read(uint8_t addr, uint8_t *ptr, uint8_t len);
-/* config functions */
+void rfm_write(uint8_t addr, uint8_t *ptr, uint8_t len);
+void rfm_read(uint8_t addr, uint8_t *ptr, uint8_t len);
+/* getters */
+static void rfm_get_rssi(uint8_t *dst);
 static void rfm_get_irq_flags(uint16_t *dst);
-static void rfm_set_lna(uint8_t impedance);
+static uint8_t rfm_is_calib_finished(void);
+/* config functions */
+static void rfm_set_modulation(uint8_t data_mode, uint8_t type, uint8_t filter);
+static void rfm_run_osc_calib(void);
+static void rfm_set_packet_config2(uint8_t delay, uint8_t force_rx, uint8_t auto_rx, uint8_t aes_on);
+static void rfm_config_fei(void);
+static void rfm_set_lna(uint8_t impedance, uint8_t gain);
 static void rfm_set_pa(uint8_t pa, uint8_t out);
 static void rfm_set_carrier(uint32_t calculated_carrier);
 static void rfm_set_mode(rfm69_mode_t mode);
@@ -54,7 +59,6 @@ static void rfm_receive_data(uint8_t *data_ptr, uint8_t len);
 uint8_t RFM_Init(uint8_t network_id, uint8_t node_id) {
     uint8_t version = RFM69_RegVersion;
     uint8_t sync_val[] = {'h', 'e', 'l', 'l'};
-    uint8_t c = 0;
 
     // LL_SPI_Enable(RFM_SPI);
 
@@ -71,12 +75,18 @@ uint8_t RFM_Init(uint8_t network_id, uint8_t node_id) {
     if(rfm_config_sync(1, 4, 0, sync_val))
         return 1;
     rfm_set_bit_rate(0x0D, 0x05);
-    rfm_set_preamble_length(10);
+    rfm_set_preamble_length(5);
 
     rfm_set_dio_mapping(0, 1);
     rfm_set_dio_mapping(3, 2);
     rfm_set_pa(3, 10);
-    rfm_set_lna(0);
+    rfm_set_lna(0, 0);
+    rfm_config_fei();
+
+    rfm_set_modulation(0, 0, 2);
+
+    rfm_run_osc_calib();
+    while (!rfm_is_calib_finished()) {}
 
     rfm_set_mode(RECEIVE);
 
@@ -85,8 +95,9 @@ uint8_t RFM_Init(uint8_t network_id, uint8_t node_id) {
 
 void RFM_Routine(void) {
     static rfm69_state_t state = IDLE;
-    uint8_t c[5] = {0};
+    uint8_t c[6] = {0};
     static uint16_t irq_flags = 0, irq_flags_old = 0;
+    uint8_t rssi = 0;
 
     switch (state) {
         case IDLE:
@@ -99,12 +110,6 @@ void RFM_Routine(void) {
             break;
     }
 
-    /* TX example */
-    // rfm_transmit_data((uint8_t *)"hello", 5);
-    // rfm_set_mode(TRANSMIT);
-    // while(!LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin)) {}
-    // rfm_set_mode(STANDBY);
-
     // while (!LL_GPIO_IsInputPinSet(RFM_DIO3_GPIO_Port, RFM_DIO3_Pin)) {}
 
     rfm_get_irq_flags(&irq_flags);
@@ -113,14 +118,46 @@ void RFM_Routine(void) {
         irq_flags_old = irq_flags;
     }
 
-    /* RX example */
-    // if (LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin)) 
+    if (irq_flags & 0x0001) {
+        rfm_get_rssi(&rssi);
+        printf("rssi %d\r\n", rssi);
+    }
+
     if (irq_flags & 0x0200) {
         rfm_receive_data(c, 5);
         printf(">>>%s\r\n", c);
     }
 }
 
+static void rfm_set_modulation(uint8_t data_mode, uint8_t type, uint8_t filter) {
+    uint8_t data = (((data_mode & 3) << 5) | ((type & 3) << 3) | (filter & 3));
+
+    rfm_write(RFM69_RegDataModul, & data, 1);
+}
+
+static void rfm_run_osc_calib(void) {
+    uint8_t data = 1 << 7;
+
+    rfm_write(RFM69_RegOsc1, &data, 1);
+}
+
+static uint8_t rfm_is_calib_finished(void) {
+    uint8_t res = 0;
+
+    rfm_read(RFM69_RegOsc1, &res, 1);
+
+    return !!(res & 64);
+}
+
+static void rfm_config_fei(void) {
+    uint8_t temp = 3 << 2;
+
+    rfm_write(RFM69_RegAfcFei, &temp, 1);
+}
+
+static void rfm_get_rssi(uint8_t *dst) {
+    rfm_read(RFM69_RegRssiValue, (uint8_t *)dst, 1);
+}
 
 static void rfm_get_irq_flags(uint16_t *dst) {
     rfm_read(RFM69_RegIrqFlags1, (uint8_t *)dst, 2);
@@ -131,8 +168,8 @@ static void rfm_get_irq_flags(uint16_t *dst) {
  *          0 - 50 Ohm
  *          1 - 200 Ohm
  */
-static void rfm_set_lna(uint8_t impedance) {
-    uint8_t temp = (impedance & 1) << 7;
+static void rfm_set_lna(uint8_t impedance, uint8_t gain) {
+    uint8_t temp = (impedance & 1) << 7 | (gain & 7);
 
     rfm_write(RFM69_RegLna, &temp, 1);
 }
@@ -313,6 +350,12 @@ static void rfm_set_packet_config1(uint8_t pm_fixed_payload_length, uint8_t dc_f
     rfm_write(RFM69_RegPacketConfig1, &data, 1);
 }
 
+static void rfm_set_packet_config2(uint8_t delay, uint8_t force_rx, uint8_t auto_rx, uint8_t aes_on) {
+    uint8_t data = ((delay & 15) << 4 | (force_rx & 1) << 3 | (auto_rx & 1) << 1 | (aes_on & 1));
+
+    rfm_write(RFM69_RegPacketConfig2, &data, 1);
+}
+
 /*
  *  @brief  configs fifo workflow
  *  @param  fifo_mode - Defines the condition to start packet transmission 
@@ -339,51 +382,10 @@ static void rfm_receive_data(uint8_t *data_ptr, uint8_t len) {
     rfm_read(RFM69_RegFifo, data_ptr, len);
 }
 
-static void rfm_write(uint8_t addr, uint8_t *ptr, uint8_t len) {
-    rfm_cs_low();
-    // delay_ms_poll(10);
-    // /* send addr with write bit */
-    // while (!LL_SPI_IsActiveFlag_TXE(RFM_SPI)) {}
-    // LL_SPI_TransmitData8(RFM_SPI, addr | 128);
-    // while (LL_SPI_IsActiveFlag_BSY(RFM_SPI)) {}
+__weak void rfm_write(uint8_t addr, uint8_t *ptr, uint8_t len) {
 
-    // while (len--) {
-    //     while (!LL_SPI_IsActiveFlag_TXE(RFM_SPI)) {}
-    //     LL_SPI_TransmitData8(RFM_SPI, *(ptr++));
-    // }
-
-    // while (!LL_SPI_IsActiveFlag_TXE(RFM_SPI)) {}
-    // while (LL_SPI_IsActiveFlag_BSY(RFM_SPI)) {}
-
-    uint8_t temp = addr | 128;
-    HAL_SPI_Transmit(&hspi2, &temp, 1, 100);
-    HAL_SPI_Transmit(&hspi2, ptr, len, 100);
-
-    rfm_cs_high();
 }
 
-static void rfm_read(uint8_t addr, uint8_t *ptr, uint8_t len) {
-    rfm_cs_low();
-    // delay_ms_poll(10);
-    // while (!LL_SPI_IsActiveFlag_TXE(RFM_SPI)) {}
-    // LL_SPI_TransmitData8(RFM_SPI, addr);
-    // while (LL_SPI_IsActiveFlag_BSY(RFM_SPI)) {}
+__weak void rfm_read(uint8_t addr, uint8_t *ptr, uint8_t len) {
 
-    // /* dummy byte reading */
-    // (void)RFM_SPI->DR;
-
-    // while (len--) {
-    //     /* dummy data to generate clock */
-    //     while (!LL_SPI_IsActiveFlag_TXE(RFM_SPI)) {}
-    //     LL_SPI_TransmitData8(RFM_SPI, 0xFF);
-    //     while (LL_SPI_IsActiveFlag_BSY(RFM_SPI)) {}
-
-    //     while (!LL_SPI_IsActiveFlag_RXNE(RFM_SPI)) {}
-    //     *(ptr++) = LL_SPI_ReceiveData8(RFM_SPI);
-    // }
-
-    HAL_SPI_Transmit(&hspi2, &addr, 1, 100);
-    HAL_SPI_Receive(&hspi2, ptr, len, 100);
-
-    rfm_cs_high();
 }

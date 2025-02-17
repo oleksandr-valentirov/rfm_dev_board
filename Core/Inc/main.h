@@ -68,6 +68,8 @@ uint8_t get_delay_ms_flag(void);
 void delay_ms_poll(uint32_t ms);
 void delay_ms_it(uint32_t ms);
 uint8_t get_delay_ms_flag(void);
+void rfm_write(uint8_t addr, uint8_t *ptr, uint8_t len);
+void rfm_read(uint8_t addr, uint8_t *ptr, uint8_t len);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

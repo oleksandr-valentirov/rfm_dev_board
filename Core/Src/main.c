@@ -33,7 +33,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define rfm_cs_low()    LL_GPIO_ResetOutputPin(RFM_CS_GPIO_Port, RFM_CS_Pin)
+#define rfm_cs_high()   LL_GPIO_SetOutputPin(RFM_CS_GPIO_Port, RFM_CS_Pin)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -106,7 +107,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    // delay_ms_poll(100);
+    delay_ms_poll(100);
     RFM_Routine();
     /* USER CODE END WHILE */
 
@@ -364,7 +365,54 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void rfm_write(uint8_t addr, uint8_t *ptr, uint8_t len) {
+  rfm_cs_low();
+  // delay_ms_poll(10);
+  // /* send addr with write bit */
+  // while (!LL_SPI_IsActiveFlag_TXE(RFM_SPI)) {}
+  // LL_SPI_TransmitData8(RFM_SPI, addr | 128);
+  // while (LL_SPI_IsActiveFlag_BSY(RFM_SPI)) {}
 
+  // while (len--) {
+  //     while (!LL_SPI_IsActiveFlag_TXE(RFM_SPI)) {}
+  //     LL_SPI_TransmitData8(RFM_SPI, *(ptr++));
+  // }
+
+  // while (!LL_SPI_IsActiveFlag_TXE(RFM_SPI)) {}
+  // while (LL_SPI_IsActiveFlag_BSY(RFM_SPI)) {}
+
+  uint8_t temp = addr | 128;
+  HAL_SPI_Transmit(&hspi2, &temp, 1, 100);
+  HAL_SPI_Transmit(&hspi2, ptr, len, 100);
+
+  rfm_cs_high();
+}
+
+void rfm_read(uint8_t addr, uint8_t *ptr, uint8_t len) {
+  rfm_cs_low();
+  // delay_ms_poll(10);
+  // while (!LL_SPI_IsActiveFlag_TXE(RFM_SPI)) {}
+  // LL_SPI_TransmitData8(RFM_SPI, addr);
+  // while (LL_SPI_IsActiveFlag_BSY(RFM_SPI)) {}
+
+  // /* dummy byte reading */
+  // (void)RFM_SPI->DR;
+
+  // while (len--) {
+  //     /* dummy data to generate clock */
+  //     while (!LL_SPI_IsActiveFlag_TXE(RFM_SPI)) {}
+  //     LL_SPI_TransmitData8(RFM_SPI, 0xFF);
+  //     while (LL_SPI_IsActiveFlag_BSY(RFM_SPI)) {}
+
+  //     while (!LL_SPI_IsActiveFlag_RXNE(RFM_SPI)) {}
+  //     *(ptr++) = LL_SPI_ReceiveData8(RFM_SPI);
+  // }
+
+  HAL_SPI_Transmit(&hspi2, &addr, 1, 100);
+  HAL_SPI_Receive(&hspi2, ptr, len, 100);
+
+  rfm_cs_high();
+}
 /* USER CODE END 4 */
 
 /**
