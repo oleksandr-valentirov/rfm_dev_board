@@ -51,6 +51,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     rfm69_lib/rfm69.c
     app/app_main.c
     Core/Src/newlib_stubs.c
+    Core/Src/radio.c
 )
 
 # Add include paths
