@@ -1,147 +1,30 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include "main.h"
+#include "main.h"  /* for MCU related SPI libs */
+
+#include "rfm69.h"
 #include "rfm69_registers.h"
 
 /* defines */
 
-
-/* types */
-typedef enum rfm69_mode {
-    SLEEP = 0,
-    STANDBY,
-    FS,
-    TRANSMIT,
-    RECEIVE,
-    LISTEN
-} rfm69_mode_t;
-
-typedef enum rfm69_state {
-    IDLE = 0,
-    CONFIG,
-    TX,
-    RX
-} rfm69_state_t;
-
-/* static variables */
-
-
 /* basic SPI RFM functions */
 void rfm_write(uint8_t addr, uint8_t *ptr, uint8_t len);
 void rfm_read(uint8_t addr, uint8_t *ptr, uint8_t len);
-/* getters */
-static void rfm_get_rssi(uint8_t *dst);
-static void rfm_get_irq_flags(uint16_t *dst);
-static uint8_t rfm_is_calib_finished(void);
-/* config functions */
-static void rfm_set_modulation(uint8_t data_mode, uint8_t type, uint8_t filter);
-static void rfm_run_osc_calib(void);
-static void rfm_set_packet_config2(uint8_t delay, uint8_t force_rx, uint8_t auto_rx, uint8_t aes_on);
-static void rfm_config_fei(void);
-static void rfm_set_lna(uint8_t impedance, uint8_t gain);
-static void rfm_set_pa(uint8_t pa, uint8_t out);
-static void rfm_set_carrier(uint32_t calculated_carrier);
-static void rfm_set_mode(rfm69_mode_t mode);
-static void rfm_set_payload_length(uint8_t value);
-static void rfm_set_broadcast_addr(uint8_t addr);
-static void rfm_set_node_addr(uint8_t addr);
-static uint8_t rfm_config_sync(uint8_t enable, uint8_t length, uint8_t err_tol, uint8_t *data_ptr);
-static void rfm_set_config_fifo(uint8_t fifo_mode, uint8_t fifo_threshold);
-static void rfm_set_packet_config1(uint8_t pm_fixed_payload_length, uint8_t dc_free, uint8_t crc_on, uint8_t crc_auto_clear_off, uint8_t addr_filtering);
-static uint8_t rfm_set_dio_mapping(uint8_t dio, uint8_t val);
-static void rfm_set_preamble_length(uint16_t len);
-static void rfm_set_bit_rate(uint8_t msb, uint8_t lsb);
-/* data tx/rx */
-static void rfm_transmit_data(uint8_t *data_ptr, uint8_t len);
-static void rfm_receive_data(uint8_t *data_ptr, uint8_t len);
 
-uint8_t RFM_Init(uint8_t network_id, uint8_t node_id) {
-    uint8_t version = RFM69_RegVersion;
-    uint8_t sync_val[] = {'h', 'e', 'l', 'l'};
-
-    // LL_SPI_Enable(RFM_SPI);
-
-    rfm_read(RFM69_RegVersion, &version, 1);
-    if (version != RFM_VERSION)
-        return 1;
-
-    rfm_set_node_addr(node_id);
-    rfm_set_broadcast_addr(255);
-    rfm_set_packet_config1(0, 1, 1, 0, 0);
-    rfm_set_carrier(14221312);  /* 868 MHz */
-    rfm_set_payload_length(5);
-    rfm_set_config_fifo(0, 4);
-    if(rfm_config_sync(1, 4, 0, sync_val))
-        return 1;
-    rfm_set_bit_rate(0x0D, 0x05);
-    rfm_set_preamble_length(5);
-
-    rfm_set_dio_mapping(0, 1);
-    rfm_set_dio_mapping(3, 2);
-    rfm_set_pa(3, 10);
-    rfm_set_lna(0, 0);
-    rfm_config_fei();
-
-    rfm_set_modulation(0, 0, 2);
-
-    rfm_run_osc_calib();
-    while (!rfm_is_calib_finished()) {}
-
-    rfm_set_mode(RECEIVE);
-
-    return 0;
-}
-
-void RFM_Routine(void) {
-    static rfm69_state_t state = IDLE;
-    uint8_t c[6] = {0};
-    static uint16_t irq_flags = 0, irq_flags_old = 0;
-    uint8_t rssi = 0;
-
-    switch (state) {
-        case IDLE:
-            break;
-        case CONFIG:
-            break;
-        case TX:
-            break;
-        case RX:
-            break;
-    }
-
-    // while (!LL_GPIO_IsInputPinSet(RFM_DIO3_GPIO_Port, RFM_DIO3_Pin)) {}
-
-    rfm_get_irq_flags(&irq_flags);
-    if (irq_flags != irq_flags_old) {
-        printf("flags 0x%04X\r\n", irq_flags);
-        irq_flags_old = irq_flags;
-    }
-
-    if (irq_flags & 0x0001) {
-        rfm_get_rssi(&rssi);
-        printf("rssi %d\r\n", rssi);
-    }
-
-    if (irq_flags & 0x0200) {
-        rfm_receive_data(c, 5);
-        printf(">>>%s\r\n", c);
-    }
-}
-
-static void rfm_set_modulation(uint8_t data_mode, uint8_t type, uint8_t filter) {
+void rfm_set_modulation(uint8_t data_mode, uint8_t type, uint8_t filter) {
     uint8_t data = (((data_mode & 3) << 5) | ((type & 3) << 3) | (filter & 3));
 
     rfm_write(RFM69_RegDataModul, & data, 1);
 }
 
-static void rfm_run_osc_calib(void) {
+void rfm_run_osc_calib(void) {
     uint8_t data = 1 << 7;
 
     rfm_write(RFM69_RegOsc1, &data, 1);
 }
 
-static uint8_t rfm_is_calib_finished(void) {
+uint8_t rfm_is_calib_finished(void) {
     uint8_t res = 0;
 
     rfm_read(RFM69_RegOsc1, &res, 1);
@@ -149,17 +32,17 @@ static uint8_t rfm_is_calib_finished(void) {
     return !!(res & 64);
 }
 
-static void rfm_config_fei(void) {
+void rfm_config_fei(void) {
     uint8_t temp = 3 << 2;
 
     rfm_write(RFM69_RegAfcFei, &temp, 1);
 }
 
-static void rfm_get_rssi(uint8_t *dst) {
+void rfm_get_rssi(uint8_t *dst) {
     rfm_read(RFM69_RegRssiValue, (uint8_t *)dst, 1);
 }
 
-static void rfm_get_irq_flags(uint16_t *dst) {
+void rfm_get_irq_flags(uint16_t *dst) {
     rfm_read(RFM69_RegIrqFlags1, (uint8_t *)dst, 2);
 }
 
@@ -168,13 +51,13 @@ static void rfm_get_irq_flags(uint16_t *dst) {
  *          0 - 50 Ohm
  *          1 - 200 Ohm
  */
-static void rfm_set_lna(uint8_t impedance, uint8_t gain) {
+void rfm_set_lna(uint8_t impedance, uint8_t gain) {
     uint8_t temp = (impedance & 1) << 7 | (gain & 7);
 
     rfm_write(RFM69_RegLna, &temp, 1);
 }
 
-static void rfm_set_pa(uint8_t pa, uint8_t out) {
+void rfm_set_pa(uint8_t pa, uint8_t out) {
     uint8_t temp = (pa << 5) | (out & 31);
 
     rfm_write(RFM69_RegPaLevel, &temp, 1);
@@ -185,7 +68,7 @@ static void rfm_set_pa(uint8_t pa, uint8_t out) {
  *  @brief  changes carrier frequency. default freq is 915 MHz
  *  @param  calculated_carrier = freq / 61.03515625
  */
-static void rfm_set_carrier(uint32_t calculated_carrier) {
+void rfm_set_carrier(uint32_t calculated_carrier) {
     uint8_t data[3] = {0, 0, 0};
 
     /* freq = freqs[Random_FromTS(HAL_GetTick()) % CH_NUM]; */
@@ -199,7 +82,7 @@ static void rfm_set_carrier(uint32_t calculated_carrier) {
 /*
  *  @brief  changes mode of operation - sleep, standby, fs, tx, rx
  */
-static void rfm_set_mode(rfm69_mode_t mode) {
+void rfm_set_mode(rfm69_mode_t mode) {
     uint8_t data = 0;
 
     if (mode != LISTEN)
@@ -213,21 +96,21 @@ static void rfm_set_mode(rfm69_mode_t mode) {
 /*
  *  @brief  sets payload length (for which mode ??)
  */
-static void rfm_set_payload_length(uint8_t value) {
+void rfm_set_payload_length(uint8_t value) {
     rfm_write(RFM69_RegPayloadLength, &value, 1);
 }
 
 /*
  *  @brief  sets broadcast address
  */
-static void rfm_set_broadcast_addr(uint8_t addr) {
+void rfm_set_broadcast_addr(uint8_t addr) {
     rfm_write(RFM69_RegBroadcastAdrs, &addr, 1);
 }
 
 /*
  *  @brief  sets current device address
  */
-static void rfm_set_node_addr(uint8_t addr) {
+void rfm_set_node_addr(uint8_t addr) {
     rfm_write(RFM69_RegNodeAdrs, &addr, 1);
 }
 
@@ -235,7 +118,7 @@ static void rfm_set_node_addr(uint8_t addr) {
  *  @brief  configs Sync word
  ToDo - check if it works fine
  */
-static uint8_t rfm_config_sync(uint8_t enable, uint8_t length, uint8_t err_tol, uint8_t *data_ptr) {
+uint8_t rfm_config_sync(uint8_t enable, uint8_t length, uint8_t err_tol, uint8_t *data_ptr) {
     uint8_t data[9] = {0};
 
     /* actual size in RFM is length + 1 because 1 sync byte is always enabled */
@@ -257,8 +140,8 @@ static uint8_t rfm_config_sync(uint8_t enable, uint8_t length, uint8_t err_tol, 
  *  @retval 0 - OK
  *  @retval 1 - bad dio value
  */
-static uint8_t rfm_set_dio_mapping(uint8_t dio, uint8_t val) {
-    static uint8_t dio_map1_state = 0, dio_map2_state = 7;  /* default values of DIO registers */
+uint8_t rfm_set_dio_mapping(uint8_t dio, uint8_t val) {
+    uint8_t dio_map1_state = 0, dio_map2_state = 7;  /* default values of DIO registers */
     uint8_t data = 0;
     uint8_t addr = 0;
 
@@ -307,7 +190,7 @@ static uint8_t rfm_set_dio_mapping(uint8_t dio, uint8_t val) {
  *  @brief  set preable length (a length of sequence of 1 an 0 in bytes)
  *  @param  len length of the preamble
  */
-static void rfm_set_preamble_length(uint16_t len) {
+void rfm_set_preamble_length(uint16_t len) {
     uint8_t data[2] = {(uint8_t)((len >> 8) & 0xFF), (uint8_t)(len & 0xFF)};
 
     rfm_write(RFM69_RegPreambleMsb, data, 2);
@@ -317,7 +200,7 @@ static void rfm_set_preamble_length(uint16_t len) {
  *  @brief  set preable length (a length of sequence of 1 an 0 in bytes)
  *  @param  len length value
  */
-static void rfm_set_bit_rate(uint8_t msb, uint8_t lsb) {
+void rfm_set_bit_rate(uint8_t msb, uint8_t lsb) {
     uint8_t data[2] = {msb, lsb};
 
     rfm_write(RFM69_RegBitrateMsb, data, 2);
@@ -338,7 +221,7 @@ static void rfm_set_bit_rate(uint8_t msb, uint8_t lsb) {
  *          01 → Address field must match NodeAddress
  *          10 → Address field must match NodeAddress or BroadcastAddress
  */
-static void rfm_set_packet_config1(uint8_t pm_fixed_payload_length, uint8_t dc_free, uint8_t crc_on, uint8_t crc_auto_clear_off, uint8_t addr_filtering) {
+void rfm_set_packet_config1(uint8_t pm_fixed_payload_length, uint8_t dc_free, uint8_t crc_on, uint8_t crc_auto_clear_off, uint8_t addr_filtering) {
     uint8_t data = 0;
 
     data = (pm_fixed_payload_length & 1) << 7;
@@ -350,7 +233,7 @@ static void rfm_set_packet_config1(uint8_t pm_fixed_payload_length, uint8_t dc_f
     rfm_write(RFM69_RegPacketConfig1, &data, 1);
 }
 
-static void rfm_set_packet_config2(uint8_t delay, uint8_t force_rx, uint8_t auto_rx, uint8_t aes_on) {
+void rfm_set_packet_config2(uint8_t delay, uint8_t force_rx, uint8_t auto_rx, uint8_t aes_on) {
     uint8_t data = ((delay & 15) << 4 | (force_rx & 1) << 3 | (auto_rx & 1) << 1 | (aes_on & 1));
 
     rfm_write(RFM69_RegPacketConfig2, &data, 1);
@@ -362,7 +245,7 @@ static void rfm_set_packet_config2(uint8_t delay, uint8_t force_rx, uint8_t auto
  *          0 - the number of bytes in the FIFO exceeds FifoThreshold
  *          1 - FifoNotEmpty
  */
-static void rfm_set_config_fifo(uint8_t fifo_mode, uint8_t fifo_threshold) {
+void rfm_set_config_fifo(uint8_t fifo_mode, uint8_t fifo_threshold) {
     uint8_t data = ((fifo_mode & 1) << 7) | (fifo_threshold & 127);
 
     rfm_write(RFM69_RegFifoThresh, &data, 1);
@@ -371,21 +254,25 @@ static void rfm_set_config_fifo(uint8_t fifo_mode, uint8_t fifo_threshold) {
 /*
  * @brief   writes data to RFM FIFO
  */
-static void rfm_transmit_data(uint8_t *data_ptr, uint8_t len) {
+void rfm_transmit_data(uint8_t *data_ptr, uint8_t len) {
     rfm_write(RFM69_RegFifo, data_ptr, len);
 }
 
 /*
  * @brief   read data from RFM FIFO
  */
-static void rfm_receive_data(uint8_t *data_ptr, uint8_t len) {
+void rfm_receive_data(uint8_t *data_ptr, uint8_t len) {
     rfm_read(RFM69_RegFifo, data_ptr, len);
 }
 
 __weak void rfm_write(uint8_t addr, uint8_t *ptr, uint8_t len) {
-
+    (void)addr;
+    (void)(ptr);
+    (void)(len);
 }
 
 __weak void rfm_read(uint8_t addr, uint8_t *ptr, uint8_t len) {
-
+    (void)addr;
+    (void)(ptr);
+    (void)(len);
 }
