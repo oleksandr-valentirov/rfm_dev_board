@@ -52,6 +52,7 @@
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 static uint32_t ms_counter = 0;
+static uint32_t rfm_ms_counter = 0;
 static uint32_t delay_ms_val = 0;
 static volatile uint8_t delay_ms_flag = 0;
 
@@ -69,6 +70,14 @@ void delay_ms_poll(uint32_t ms) {
 void delay_ms_it(uint32_t ms) {
   delay_ms_flag = 0;
   delay_ms_val = ms_counter + ms;
+}
+
+uint32_t get_rfm_counter(void) {
+  return rfm_ms_counter;
+}
+
+void set_rfm_counter(uint32_t val) {
+  rfm_ms_counter = val;
 }
 /* USER CODE END 0 */
 
@@ -217,6 +226,20 @@ void SysTick_Handler(void)
 /* For the available peripheral interrupt handler names,                      */
 /* please refer to the startup file (startup_stm32l4xx.s).                    */
 /******************************************************************************/
+
+/**
+  * @brief This function handles TIM7 global interrupt.
+  */
+void TIM7_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM7_IRQn 0 */
+  LL_TIM_ClearFlag_UPDATE(TIM7);
+  rfm_ms_counter++;
+  /* USER CODE END TIM7_IRQn 0 */
+  /* USER CODE BEGIN TIM7_IRQn 1 */
+
+  /* USER CODE END TIM7_IRQn 1 */
+}
 
 /* USER CODE BEGIN 1 */
 
