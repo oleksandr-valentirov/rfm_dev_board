@@ -1,76 +1,122 @@
 #include <stdio.h>
 #include "radio.h"
 #include "main.h"
+#include "radio_protocol.h"
 
 /* defines */
-#define BROADCAST_ADDR  255
+#define BROADCAST_ADDR      255
+#define PAIRING_TIMEOUT_MS  60000000
 
 /* types */
 typedef enum radio_state {
-    IDLE = 0,
-    CONFIG,
-    TX,
-    RX
+    CONN = 0,
+    NO_CONN
 } radio_state_t;
 
-typedef struct radio_header {
+typedef struct rfm_header {
     uint8_t length;
-    uint8_t addr;
-} __attribute__((packed)) radio_header_t;
+} __attribute__((packed)) rfm_header_t;
 
 typedef struct radio_broadcast {
+    uint8_t addr;
     uint32_t flags;
     uint32_t clock;
-} __attribute__((packed)) radio_broadcast_t;
+} __attribute__((packed)) rfm_broadcast_t;
+
+/* variables */
+static uint8_t tx_buffer[256] = {0};
 
 
 void RFM_Routine(void) {
-    static radio_state_t state = IDLE;
-    uint8_t c[sizeof(radio_header_t) + sizeof(radio_broadcast_t) + 2] = {0};
-    radio_header_t *header = (radio_header_t *)c;
-    radio_broadcast_t *payload = (radio_broadcast_t *)(c + sizeof(header));
+    radio_state_t state = NO_CONN;  /* make static */
+    uint32_t hub_id = 0;
+    rfm_header_t *header = (rfm_header_t *)tx_buffer;
+    rfm_broadcast_t *payload = (rfm_broadcast_t *)(tx_buffer + sizeof(header));
+    protocol_pairing_t *pairing = (protocol_pairing_t *)(tx_buffer + sizeof(header));
+
     static uint16_t irq_flags = 0;
     uint8_t rssi = 0;
 
     switch (state) {
-        case IDLE:
+        case CONN:
+            rfm_set_dio_mapping(4, 2);
+            rfm_set_dio_mapping(0, 2);
+            rfm_set_mode(RECEIVE);
+            while (!LL_GPIO_IsInputPinSet(RFM_DIO4_GPIO_Port, RFM_DIO4_Pin)) {}
+            delay_ms_it(50);  /* todo - fix this shit */
+            while (!LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin) && !get_delay_ms_flag()) {}
+        
+            if (!LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin)) {
+                rfm_set_mode(STANDBY);
+                do {
+                    rfm_get_irq_flags(&irq_flags);
+                } while ((irq_flags & 128) == 0);
+                return;
+            }
+        
+            rfm_set_dio_mapping(0, 0);
+            delay_ms_it(50);  /* todo - fix this shit */
+            while (!LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin) && !get_delay_ms_flag()) {}
+            if (LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin)) {
+                rfm_receive_data(tx_buffer, 12);
+                printf("clock %lu ms %lu ms\r\n", payload->clock, get_rfm_counter());
+            } else
+                printf("crc timeout\r\n");
+        
+            rfm_set_mode(STANDBY);
+            do {
+                rfm_get_irq_flags(&irq_flags);
+            } while ((irq_flags & 128) == 0);
+
             break;
-        case CONFIG:
-            break;
-        case TX:
-            break;
-        case RX:
+        
+        case NO_CONN:
+            /* config */
+
+            /* wait for a msg on 868 MHz */
+            do {
+                if (hub_id) {
+                    /* wait for a broadcast on specific channel during a time slot */
+                    rfm_set_packet_config1(1, 1, 1, 0, 2);  /* enable RFM addr filter */
+                }
+
+                rfm_set_dio_mapping(4, 2);
+                rfm_set_dio_mapping(0, 2);
+                rfm_set_packet_config1(1, 1, 1, 0, 0);  /* disable RFM addr filter */
+
+                /* wait for sync */
+                rfm_set_mode(RECEIVE);
+                while (!LL_GPIO_IsInputPinSet(RFM_DIO4_GPIO_Port, RFM_DIO4_Pin)) {}
+                delay_ms_it(50);  /* todo - fix this shit */
+                while (!LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin) && !get_delay_ms_flag()) {}
+
+                if (LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin)) {
+                    /* get payload */
+                    rfm_set_dio_mapping(0, 0);
+                    delay_ms_it(50);  /* todo - fix this shit */
+                    while (!LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin) && !get_delay_ms_flag()) {}
+                    if (LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin)) {
+                        rfm_receive_data(tx_buffer, 12);
+                        printf("hub id 0x%08X\r\n", pairing->header.hub_id);
+                        state = CONN;
+                    }
+                    break;
+                } else {
+                    rfm_set_mode(STANDBY);
+                    do {
+                        rfm_get_irq_flags(&irq_flags);
+                    } while ((irq_flags & 128) == 0);
+                }
+
+                rfm_set_mode(STANDBY);
+                do {
+                    rfm_get_irq_flags(&irq_flags);
+                } while ((irq_flags & 128) == 0);
+
+            } while (!state);
+
             break;
     }
-
-    rfm_set_dio_mapping(4, 2);
-    rfm_set_dio_mapping(0, 2);
-    rfm_set_mode(RECEIVE);
-    while (!LL_GPIO_IsInputPinSet(RFM_DIO4_GPIO_Port, RFM_DIO4_Pin)) {}
-    delay_ms_it(50);  /* todo - fix this shit */
-    while (!LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin) && !get_delay_ms_flag()) {}
-
-    if (!LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin)) {
-        rfm_set_mode(STANDBY);
-        do {
-            rfm_get_irq_flags(&irq_flags);
-        } while ((irq_flags & 128) == 0);
-        return;
-    }
-
-    rfm_set_dio_mapping(0, 0);
-    delay_ms_it(50);  /* todo - fix this shit */
-    while (!LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin) && !get_delay_ms_flag()) {}
-    if (LL_GPIO_IsInputPinSet(RFM_DIO0_GPIO_Port, RFM_DIO0_Pin)) {
-        rfm_receive_data(c, 12);
-        printf("clock %lu ms %lu ms\r\n", payload->clock, get_rfm_counter());
-    } else
-        printf("crc timeout\r\n");
-
-    rfm_set_mode(STANDBY);
-    do {
-        rfm_get_irq_flags(&irq_flags);
-    } while ((irq_flags & 128) == 0);
 }
 
 uint8_t RFM_Init(uint8_t network_id, uint8_t node_id) {
@@ -94,7 +140,7 @@ uint8_t RFM_Init(uint8_t network_id, uint8_t node_id) {
     if(rfm_config_sync(1, 4, 0, sync_val))
         return 1;
     rfm_set_bit_rate(0x0D, 0x05);
-    rfm_set_preamble_length(50);
+    rfm_set_preamble_length(6);
 
     rfm_set_pa(3, 10);
     rfm_set_lna(0, 0);
